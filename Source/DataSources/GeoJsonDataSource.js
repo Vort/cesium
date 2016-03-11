@@ -249,6 +249,7 @@ define([
     }
 
     function createPoint(dataSource, geoJson, crsFunction, coordinates, options) {
+        var svgstr = null;
         var symbol = options.markerSymbol;
         var color = options.markerColor;
         var size = options.markerSize;
@@ -265,6 +266,8 @@ define([
             if (definedNotNull(markerSymbol)) {
                 symbol = markerSymbol;
             }
+
+            svgstr = properties['html'];
         }
 
         stringifyScratch[0] = symbol;
@@ -272,8 +275,15 @@ define([
         stringifyScratch[2] = size;
         var id = JSON.stringify(stringifyScratch);
 
+        var svgwidth;
+        var svgheight;
         var canvasOrPromise;
-        if (defined(symbol)) {
+        if (definedNotNull(svgstr)) {
+            var svgel = new DOMParser().parseFromString(svgstr, "image/svg+xml").documentElement;
+            svgwidth = svgel.width.baseVal.value;
+            svgheight = svgel.height.baseVal.value;
+            canvasOrPromise = 'data:image/svg+xml;base64,' + btoa(svgstr);
+        } else if (defined(symbol)) {
             if (symbol.length === 1) {
                 canvasOrPromise = dataSource._pinBuilder.fromText(symbol.toUpperCase(), color, size);
             } else {
@@ -287,6 +297,10 @@ define([
             var billboard = new BillboardGraphics();
             billboard.verticalOrigin = new ConstantProperty(VerticalOrigin.BOTTOM);
             billboard.image = new ConstantProperty(dataUrl);
+
+            // Internet Explorer hack
+            billboard.width = svgwidth;
+            billboard.height = svgheight;
 
             var entity = createObject(geoJson, dataSource._entityCollection, options.describe);
             entity.billboard = billboard;

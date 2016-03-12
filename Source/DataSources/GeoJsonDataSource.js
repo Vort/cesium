@@ -10,11 +10,13 @@ define([
         '../Core/DeveloperError',
         '../Core/Event',
         '../Core/getFilenameFromUri',
+        '../Core/loadImage',
         '../Core/loadJson',
         '../Core/PinBuilder',
         '../Core/PolygonHierarchy',
         '../Core/RuntimeError',
         '../Scene/VerticalOrigin',
+        '../ThirdParty/canvg',
         '../ThirdParty/topojson',
         '../ThirdParty/when',
         './BillboardGraphics',
@@ -37,11 +39,13 @@ define([
         DeveloperError,
         Event,
         getFilenameFromUri,
+        loadImage,
         loadJson,
         PinBuilder,
         PolygonHierarchy,
         RuntimeError,
         VerticalOrigin,
+        canvg,
         topojson,
         when,
         BillboardGraphics,
@@ -82,6 +86,8 @@ define([
         medium : 48,
         large : 64
     };
+
+    var svgToCanvasSupported = 0;
 
     var simpleStyleIdentifiers = ['title', 'description', //
     'marker-size', 'marker-symbol', 'marker-color', 'stroke', //
@@ -248,7 +254,36 @@ define([
         }
     }
 
+    function renderSvg(svgstr) {
+        if (svgToCanvasSupported != -1) {
+            var image64 = 'data:image/svg+xml;base64,' + btoa(svgstr);
+            var result = loadImage(image64).then(function (image) {
+                var canvas = document.createElement('canvas');
+                canvas.width = image.width == 0 ? 1 : image.width;
+                canvas.height = image.height == 0 ? 1 : image.height;
+                var context2D = canvas.getContext("2d");
+                context2D.drawImage(image, 0, 0);
+                if (svgToCanvasSupported == 0) {
+                    try {
+                        canvas.toDataURL();
+                        svgToCanvasSupported = 1;
+                    } catch (e) {
+                        svgToCanvasSupported = -1;
+                        return renderSvg(svgstr);
+                    }
+                }
+                return canvas;
+            });
+            return result;
+        } else {
+            var canvas = document.createElement('canvas');
+            canvg(canvas, svgstr, { ignoreMouse: true, ignoreAnimation: true });
+            return canvas.toDataURL();
+        }
+    }
+
     function createPoint(dataSource, geoJson, crsFunction, coordinates, options) {
+        var svgstr = null;
         var symbol = options.markerSymbol;
         var color = options.markerColor;
         var size = options.markerSize;
@@ -265,6 +300,8 @@ define([
             if (definedNotNull(markerSymbol)) {
                 symbol = markerSymbol;
             }
+
+            svgstr = properties['html'];
         }
 
         stringifyScratch[0] = symbol;
@@ -273,7 +310,9 @@ define([
         var id = JSON.stringify(stringifyScratch);
 
         var canvasOrPromise;
-        if (defined(symbol)) {
+        if (definedNotNull(svgstr)) {
+            canvasOrPromise = renderSvg(svgstr);
+        } else if (defined(symbol)) {
             if (symbol.length === 1) {
                 canvasOrPromise = dataSource._pinBuilder.fromText(symbol.toUpperCase(), color, size);
             } else {
